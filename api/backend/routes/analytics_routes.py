@@ -112,3 +112,31 @@ def get_demographics():
     finally:
         cursor.close()
 
+@analytics.route("/top-restaurants", methods=["GET"])
+def get_top_restaurants():
+    cursor = get_db().cursor(dictionary=True)
+    try:
+        limit = request.args.get("limit", default=10, type=int)
+
+        cursor.execute("""
+            SELECT r.restaurant_id, r.restaurant_name, c.city_name,
+                   r.avg_rating,
+                   COUNT(sa.swipe_id) AS swipe_count
+            FROM RESTAURANT r
+            JOIN CITY c ON r.city_id = c.city_id
+            LEFT JOIN SWIPEACTIVITY sa 
+                ON r.restaurant_id = sa.restaurant_id 
+                AND sa.swipe_result = 'yes'
+            WHERE r.is_active = TRUE
+            GROUP BY r.restaurant_id, r.restaurant_name, c.city_name, r.avg_rating
+            ORDER BY r.avg_rating DESC, swipe_count DESC
+            LIMIT %s
+        """, (limit,))
+
+        results = cursor.fetchall()
+        return jsonify(results), 200
+
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
