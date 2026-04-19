@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request, current_app
 from backend.db_connection import get_db
 from mysql.connector import Error
 
-restaurants = Blueprint("restaurants", __name__)
+restaurants = Blueprint("restaurants", __name__, url_prefix="/restaurants")
 
 @restaurants.route("/", methods = ["GET"])
 def get_all_restaurants():
@@ -68,7 +68,7 @@ def get_Restaurant(restaurant_id):
     finally:
         cursor.close()
 
-@restaurants.route("/<int:restaurant_id>", methods: ["PUT"])
+@restaurants.route("/<int:restaurant_id>", methods= ["PUT"])
 def update_restaurant(restaurant_id):
     cursor = get_db().cursor(dictionary=True)
     try:
@@ -76,11 +76,11 @@ def update_restaurant(restaurant_id):
 
         allowed_fields = ["restaurant_name", "address", "description", "price-tier-id", "is_active"]
 
-        update_fields = [f "{f} = %s" for f in allowed_fields if f in data]
+        update_fields = [f"{f} = %s" for f in allowed_fields if f in data]
         params = [data[f] for f in allowed_fields if f in data]
 
         if not update_fields:
-            return jsonify({error: "No valid fields to update"}), 400
+            return jsonify({"error": "No valid fields to update"}), 400
         
         params.append(restaurant_id)
         query = f"UPDATE RESTAURANT SET {", ".join(update_fields)} WHERE restaurant_id = %s"
