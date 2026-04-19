@@ -68,3 +68,77 @@ def get_Restaurant(restaurant_id):
     finally:
         cursor.close()
 
+@restaurants.route("</int:restaurant_id>", methods: ["PUT"])
+def update_restaurant(restaurant_id):
+    cursor = get_db().cursor(dictionary=True)
+    try:
+        data = request.get_json()
+
+        allowed_fields = ["restaurant_name", "address", "description", "price-tier-id", "is_active"]
+
+        update_fields = [f "{f} = %s" for f in allowed_fields if f in data]
+        params = [data[f] for f in allowed_fields if f in data]
+
+        if not update_fields:
+            return jsonify({error: "No valid fields to update"}), 400
+        
+        params.append(restaurant_id)
+        query = f"UPDATE RESTAURANT SET {", ".join(update_fields)} WHERE restaurant_id = %s"
+        cursor.execute(query, params)
+        get_db().commit()
+        return jsonify({"message": "Restaurant fields updated successfully"}), 200
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+
+@restaurants.route("</int restaurant_id>", methods=["DELETE"])
+def delete_restaurant(restaurant_id):
+    cursor = get_db().cursor(dictionary=True)
+    try:
+        cursor.execute("DELETE FROM RESTAURANT WHERE restaurant_id = %s", (restaurant_id,))
+        get_db().commit()
+
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+    
+@restaurants.route("</int restaurant_id>/menu", methods = ["GET"])
+def get_menu(restaurant_id):
+    cursor = get_db().cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT * FROM MENUITEM
+            WHERE restaurant_id = %s
+        """, (restaurant_id,))
+        return jsonify(cursor.fetchall()), 200
+
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+
+@restaurants.route("</int restaurant_id/menu", methods = ["POST"])
+def add_menu_item(restaurant_id):
+    cursor = get_db().cursor()
+    try:
+        data = request.get_json()
+
+        cursor.execute("""
+            INSERT INTO MENUITEM (restaurant_id, item_name, description, price, is_available)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (restaurant_id,
+              data["item_name"],
+              data.get("description", ""),
+              data["price"],
+              data.get("is_available", True)))
+
+        get_db().commit()
+        return jsonify({"menu_item_id": cursor.lastrowid}), 201
+    
+    except Error as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+
