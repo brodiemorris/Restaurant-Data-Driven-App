@@ -20,4 +20,4 @@ WORKDIR /appcode
 COPY ./src .
 
 EXPOSE 8501
-CMD ["streamlit", "run", "Home.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "forkit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]

@@ -284,8 +284,8 @@ FORK_SVG = '<svg width="28" height="28" viewBox="0 0 44 180" fill="none" xmlns="
 # ---------- DATABASE ----------
 def get_connection():
     return mysql.connector.connect(
-        host="127.0.0.1",
-        port=3307,
+        host="db",
+        port=3306,
         user="root",
         password="ForkIt$123",
         database="forkit"
@@ -1334,3 +1334,4 @@ elif page == "Manage Restaurants":
                     run_action("DELETE FROM RESTAURANT WHERE restaurant_id = %s", (rid,))
                     st.success(f"'{row['restaurant_name']}' deleted.")
                     st.rerun()
+
