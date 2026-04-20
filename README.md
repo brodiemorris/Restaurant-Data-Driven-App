@@ -25,7 +25,7 @@ Fork It is built for four main user personas:
 - **Data Analysts** (ex. Walter White) — Explore dining trends, pricing comparisons, and cuisine performance across cities
 - **Platform Admins** (ex. Zara Larson) — Approve restaurant submissions, resolve user complaints, and manage platform integrity
 
---
+---
 
 ### User Roles
 
