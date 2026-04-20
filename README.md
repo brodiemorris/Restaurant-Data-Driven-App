@@ -89,7 +89,7 @@ cp api/.env.template api/.env
 
 ### 4. Set Up Docker Password
 
-In line 290 of the `.env` file, change "ForkIt$123" to your personal docker password, run a mySql instance on docker.
+In line 290 of the `app/src/modules/forklit_app.py` file, change "ForkIt$123" to your personal docker password, run a mySql instance on docker.
 
 ### 5. Start the Docker Containers
 
