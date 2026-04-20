@@ -87,7 +87,11 @@ In the `api/` folder, create a `.env` file based on the provided template:
 cp api/.env.template api/.env
 ```
 
-### 4. Start the Docker Containers
+### 4. Set Up Docker Password
+
+In line 290 of the `.env` file, change "ForkIt$123" to your personal docker password, run a mySql instance on docker.
+
+### 5. Start the Docker Containers
 
 From the root of the repository, run:
 
@@ -112,7 +116,7 @@ To fully shut down and remove the containers:
 docker compose down
 ```
 
-### 5. Open the App
+### 6. Open the App
 
 Once the containers are running, open your browser and go to:
 
