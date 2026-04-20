@@ -3,7 +3,10 @@ import pandas as pd
 import mysql.connector
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Fork-It", layout="wide")
+# NOTE: initial_sidebar_state="expanded" ensures the nav sidebar is always
+# visible after login (previously it was auto-collapsed on narrower windows,
+# which is why navigation felt broken and there was no visible Log out).
+st.set_page_config(page_title="Fork-It", layout="wide", initial_sidebar_state="expanded")
 
 # ---------- STYLING ----------
 st.markdown("""
@@ -15,9 +18,21 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+   /* Hide the three-dot menu and the annoying Deploy button */
+    #MainMenu, .stAppDeployButton {
+        display: none !important;
+    }
+
+    /* Make the top header completely transparent so it blends into your background */
+    [data-testid="stHeader"] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Shift the sidebar content up slightly so your logo sits perfectly flush */
+    [data-testid="stSidebar"] {
+        padding-top: 2rem !important;
+    }
 
     .block-container {
         padding-top: 1rem;
@@ -211,6 +226,21 @@ st.markdown("""
         overflow: hidden;
     }
 
+    /* ---------- SECONDARY BUTTON ---------- */
+    .secondary-btn button {
+        background-color: #ffffff !important;
+        color: #1a1a18 !important;
+        border: 1px solid rgba(0,0,0,0.13) !important;
+        font-weight: 500 !important;
+        font-size: 0.82rem !important;
+        padding: 0.35rem 1rem !important;
+    }
+    .secondary-btn button:hover {
+        background-color: #f5f4f2 !important;
+        border-color: rgba(0,0,0,0.22) !important;
+        color: #1a1a18 !important;
+    }
+
     /* ---------- PERSONA CARD ---------- */
     .persona-card {
         background: #ffffff;
@@ -219,6 +249,7 @@ st.markdown("""
         padding: 1.4rem 1.2rem;
         text-align: center;
         transition: border-color 0.2s, box-shadow 0.2s;
+        margin-bottom: 0.6rem;
     }
     .persona-card:hover {
         border-color: #D85A30;
@@ -254,7 +285,7 @@ FORK_SVG = '<svg width="28" height="28" viewBox="0 0 44 180" fill="none" xmlns="
 def get_connection():
     return mysql.connector.connect(
         host="127.0.0.1",
-        port=3200,
+        port=3307,
         user="root",
         password="ForkIt$123",
         database="forkit"
@@ -286,9 +317,11 @@ if "user_name" not in st.session_state:
     st.session_state.user_name = ""
 if "persona" not in st.session_state:
     st.session_state.persona = None
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = "Home"
 
 # =====================================================================
-#  LANDING PAGE — Persona Select + Login
+#  LANDING PAGE — Persona Select (simplified: 2 click paths per persona)
 # =====================================================================
 if not st.session_state.logged_in:
     st.markdown(f"""
@@ -305,7 +338,6 @@ if not st.session_state.logged_in:
     st.markdown('<div class="section-title">Who are you?</div>', unsafe_allow_html=True)
     st.caption("Select your persona to get started.")
 
-    # --- Persona cards ---
     personas = [
         {"key": "diner",   "icon": "🍽️", "name": "Edgar Ripley",  "role": "Casual Diner",      "desc": "Browse, swipe, and discover restaurants tailored to your taste."},
         {"key": "owner",   "icon": "👨‍🍳", "name": "John Pork",     "role": "Restaurant Owner",  "desc": "Manage your restaurant, menu, promotions, and reviews."},
@@ -313,9 +345,32 @@ if not st.session_state.logged_in:
         {"key": "admin",   "icon": "🛡️", "name": "Zara Larson",   "role": "Platform Admin",    "desc": "Approve listings, resolve complaints, and manage the platform."},
     ]
 
+    # Prefetch one DB user per role (so we have a valid user_id to log in as)
+    _all_adm = run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = 'admin' ORDER BY user_id")
+    _adm_half = max(1, len(_all_adm) // 2) if not _all_adm.empty else 0
+    _ql_sources = {
+        "diner":   run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = 'user' ORDER BY user_id LIMIT 1"),
+        "owner":   run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = 'owner' ORDER BY user_id LIMIT 1"),
+        "analyst": _all_adm.iloc[:_adm_half] if not _all_adm.empty else _all_adm,
+        "admin":   _all_adm.iloc[_adm_half:] if not _all_adm.empty and len(_all_adm) > _adm_half else _all_adm,
+    }
+    quick_login_users = {}
+    for _pk, _df in _ql_sources.items():
+        if not _df.empty:
+            _r = _df.iloc[0]
+            quick_login_users[_pk] = {"user_id": int(_r["user_id"]), "name": f"{_r['first_name']} {_r['last_name']}"}
+
+    def _login_as(p, ql):
+        st.session_state.logged_in = True
+        st.session_state.user_id = ql['user_id']      # real DB user_id for queries
+        st.session_state.user_name = p['name']         # display the persona name in the UI
+        st.session_state.persona = p['role']
+        st.session_state.nav_page = "Home"
+
     cols = st.columns(4)
     for i, p in enumerate(personas):
         with cols[i]:
+            # Persona card (visual)
             st.markdown(f"""
             <div class="persona-card">
                 <div class="persona-icon">{p['icon']}</div>
@@ -325,44 +380,22 @@ if not st.session_state.logged_in:
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+            ql = quick_login_users.get(p['key'])
+            if not ql:
+                st.caption(f"(no {p['role']} users in DB yet)")
+                continue
 
-    # --- Persona select widget ---
-    persona_choice = st.selectbox(
-        "Select your persona",
-        ["-- Choose --", "Casual Diner", "Restaurant Owner", "Data Analyst", "Platform Admin"]
-    )
-
-    # --- User login based on persona ---
-    if persona_choice != "-- Choose --":
-        role_map = {
-            "Casual Diner": "user",
-            "Restaurant Owner": "owner",
-            "Data Analyst": "admin",   # analysts are admin-role in DB
-            "Platform Admin": "admin",
-        }
-        role = role_map[persona_choice]
-
-        if persona_choice == "Data Analyst":
-            users = run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = 'admin'")
-        elif persona_choice == "Platform Admin":
-            users = run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = 'admin'")
-        else:
-            users = run_query("SELECT user_id, first_name, last_name FROM `USER` WHERE role = %s", (role,))
-
-        if users.empty:
-            st.warning(f"No users found with the '{role}' role in the database.")
-        else:
-            user_options = {f"{row['first_name']} {row['last_name']} (ID: {row['user_id']})": row['user_id'] for _, row in users.iterrows()}
-            selected_user = st.selectbox("Log in as", list(user_options.keys()))
-
-            if st.button("Log in →"):
-                uid = user_options[selected_user]
-                st.session_state.logged_in = True
-                st.session_state.user_id = uid
-                st.session_state.user_name = selected_user.split(" (ID")[0]
-                st.session_state.persona = persona_choice
+            # Path 1: click the named persona (top path)
+            if st.button(f"Continue as {p['name']}", key=f"persona_{p['key']}", use_container_width=True):
+                _login_as(p, ql)
                 st.rerun()
+
+            # Path 2: click the generic role (bottom path)
+            st.markdown('<div class="secondary-btn">', unsafe_allow_html=True)
+            if st.button(p['role'], key=f"role_{p['key']}", use_container_width=True):
+                _login_as(p, ql)
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
 
@@ -400,13 +433,23 @@ elif persona == "Platform Admin":
 else:
     nav_options = ["Home"]
 
-page = st.sidebar.radio("Navigate", nav_options)
+# Clamp saved page to valid options for this persona, then use index-based
+# selection (no widget key — avoids conflicts between manual session_state
+# writes in the login/logout handlers and widget-managed state).
+if st.session_state.nav_page not in nav_options:
+    st.session_state.nav_page = "Home"
+_default_idx = nav_options.index(st.session_state.nav_page)
 
+page = st.sidebar.radio("Navigate", nav_options, index=_default_idx)
+st.session_state.nav_page = page
+
+st.sidebar.markdown("---")
 if st.sidebar.button("Log out"):
     st.session_state.logged_in = False
     st.session_state.user_id = None
     st.session_state.user_name = ""
     st.session_state.persona = None
+    st.session_state.nav_page = "Home"
     st.rerun()
 
 uid = st.session_state.user_id
@@ -741,7 +784,6 @@ elif page == "Browse Restaurants":
 elif page == "My Dining History":
     st.markdown('<div class="section-title">My dining history</div>', unsafe_allow_html=True)
 
-    # --- View history ---
     history = run_query("""
         SELECT dh.history_id, r.restaurant_name, c.city_name, dh.visit_date, dh.user_rating
         FROM DININGHISTORY dh
@@ -758,7 +800,6 @@ elif page == "My Dining History":
 
     st.markdown("---")
 
-    # --- Add a review (POST) ---
     st.markdown("##### Leave a review")
     restaurants = run_query("SELECT restaurant_id, restaurant_name FROM RESTAURANT ORDER BY restaurant_name")
     restaurant_map = dict(zip(restaurants["restaurant_name"], restaurants["restaurant_id"]))
@@ -779,7 +820,6 @@ elif page == "My Dining History":
 
     st.markdown("---")
 
-    # --- Update preferences (PUT) ---
     st.markdown("##### Update my preferences")
     prefs = run_query("SELECT * FROM USERPREFERENCE WHERE user_id = %s", (uid,))
 
@@ -838,7 +878,6 @@ elif page == "My Restaurant":
         </div>
         """, unsafe_allow_html=True)
 
-        # Swipe stats
         st.markdown("##### Engagement stats")
         stats = run_query("""
             SELECT swipe_result, COUNT(*) AS count
@@ -851,7 +890,6 @@ elif page == "My Restaurant":
                 with stat_cols[i]:
                     st.metric(srow["swipe_result"].capitalize(), int(srow["count"]))
 
-        # Update restaurant description (PUT)
         st.markdown("---")
         st.markdown("##### Update description")
         new_desc = st.text_area("Description", value=rest_row["description"])
@@ -870,7 +908,6 @@ elif page == "Menu & Promotions":
         selected_rest = st.selectbox("Select restaurant", restaurants["restaurant_name"].tolist())
         rid = int(restaurants[restaurants["restaurant_name"] == selected_rest].iloc[0]["restaurant_id"])
 
-        # --- Current menu ---
         left, right = st.columns(2)
 
         with left:
@@ -881,7 +918,6 @@ elif page == "Menu & Promotions":
             else:
                 st.dataframe(menu[["item_name", "price", "is_available"]], use_container_width=True, hide_index=True)
 
-                # Delete menu item (DELETE)
                 item_to_delete = st.selectbox("Remove a menu item", menu["item_name"].tolist())
                 if st.button("Delete menu item"):
                     del_id = int(menu[menu["item_name"] == item_to_delete].iloc[0]["menu_item_id"])
@@ -890,7 +926,6 @@ elif page == "Menu & Promotions":
                     st.rerun()
 
         with right:
-            # Add menu item (POST)
             st.markdown("##### Add menu item")
             new_item = st.text_input("Item name")
             new_item_desc = st.text_input("Item description")
@@ -907,7 +942,6 @@ elif page == "Menu & Promotions":
 
         st.markdown("---")
 
-        # --- Promotions ---
         st.markdown("##### Active promotions")
         promos = run_query("""
             SELECT promotion_id, title, description, start_date, end_date, is_active
@@ -918,7 +952,6 @@ elif page == "Menu & Promotions":
         else:
             st.dataframe(promos[["title", "start_date", "end_date", "is_active"]], use_container_width=True, hide_index=True)
 
-        # Add promotion (POST)
         st.markdown("##### Create promotion")
         promo_title = st.text_input("Promotion title")
         promo_desc = st.text_input("Promotion description")
@@ -971,7 +1004,6 @@ elif page == "Reviews & Replies":
                 if rev["owner_reply_text"]:
                     st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ **Your reply** ({rev['owner_reply_date']}): {rev['owner_reply_text']}")
                 else:
-                    # Reply to review (PUT)
                     with st.expander(f"Reply to {rev['first_name']}'s review"):
                         reply = st.text_area("Your reply", key=f"reply_{rev['review_id']}")
                         if st.button("Send reply", key=f"btn_reply_{rev['review_id']}"):
@@ -1257,7 +1289,6 @@ elif page == "Manage Restaurants":
     if all_restaurants.empty:
         st.info("No restaurants in the system.")
     else:
-        # Search / filter
         search = st.text_input("Search by name")
         filtered = all_restaurants
         if search:
@@ -1282,7 +1313,6 @@ elif page == "Manage Restaurants":
 
             ac1, ac2 = st.columns(2)
             with ac1:
-                # Toggle active/inactive (PUT)
                 toggle_label = "Deactivate" if row["is_active"] else "Reactivate"
                 if st.button(toggle_label, key=f"toggle_{row['restaurant_id']}"):
                     new_status = 0 if row["is_active"] else 1
@@ -1290,10 +1320,8 @@ elif page == "Manage Restaurants":
                                (new_status, int(row["restaurant_id"])))
                     st.rerun()
             with ac2:
-                # Delete restaurant (DELETE) — cascading cleanup
                 if st.button("Delete", key=f"del_{row['restaurant_id']}"):
                     rid = int(row["restaurant_id"])
-                    # delete dependent rows first
                     run_action("DELETE FROM GROUPRESTAURANTVOTE WHERE restaurant_id = %s", (rid,))
                     run_action("DELETE FROM DININGHISTORY WHERE restaurant_id = %s", (rid,))
                     run_action("DELETE FROM SWIPEACTIVITY WHERE restaurant_id = %s", (rid,))
